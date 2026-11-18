@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Aspiral MCP Universal Installer (macOS & Linux)
-INSTALL_DIR="$HOME/.aspiral/bin"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.aspiral/bin}"
 REPO="DI-Solutions-Mx/aspiral-mcp"
 BASE_URL="https://github.com/$REPO/releases/latest/download"
 
