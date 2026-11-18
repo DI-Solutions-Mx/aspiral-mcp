@@ -19,6 +19,12 @@ if [ "$OS" = "darwin" ]; then
   else
     BINARY_NAME="aspiral-mcp-macos-x64"
   fi
+elif [ "$OS" = "linux" ]; then
+  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    BINARY_NAME="aspiral-mcp-linux-arm64"
+  else
+    BINARY_NAME="aspiral-mcp-linux-x64"
+  fi
 else
   echo "Error: Esta plataforma ($OS-$ARCH) no cuenta con binario precompilado actualmente." >&2
   exit 1
@@ -37,7 +43,15 @@ echo "--> Descargando $BINARY_NAME..."
 curl -fsSL "$BASE_URL/$BINARY_NAME" -o "$TMP_DIR/$BINARY_NAME"
 
 echo "--> Verificando integridad SHA-256..."
-ACTUAL_SHA=$(shasum -a 256 "$TMP_DIR/$BINARY_NAME" | awk '{print $1}')
+if command -v sha256sum &>/dev/null; then
+  ACTUAL_SHA=$(sha256sum "$TMP_DIR/$BINARY_NAME" | awk '{print $1}')
+elif command -v shasum &>/dev/null; then
+  ACTUAL_SHA=$(shasum -a 256 "$TMP_DIR/$BINARY_NAME" | awk '{print $1}')
+else
+  echo "Error: No se encontró 'sha256sum' ni 'shasum' para verificar integridad." >&2
+  exit 1
+fi
+
 if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
   echo "Error: La suma de verificación SHA-256 no coincide." >&2
   echo "Esperado: $EXPECTED_SHA" >&2
