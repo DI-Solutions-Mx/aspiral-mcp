@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Aspiral MCP Universal Installer (macOS & Linux)
+# Aspiral MCP Universal Installer (macOS & Linux x64)
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.aspiral/bin}"
 REPO="DI-Solutions-Mx/aspiral-mcp"
-BASE_URL="https://github.com/$REPO/releases/latest/download"
+BASE_URL="${ASPIRAL_RELEASE_BASE_URL:-https://github.com/$REPO/releases/latest/download}"
 
 echo "================================================"
 echo "    Instalador Oficial Aspiral Monitoring MCP   "
@@ -14,16 +14,17 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
 if [ "$OS" = "darwin" ]; then
-  if [ "$ARCH" = "arm64" ]; then
+  if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
     BINARY_NAME="aspiral-mcp-macos-arm64"
   else
     BINARY_NAME="aspiral-mcp-macos-x64"
   fi
 elif [ "$OS" = "linux" ]; then
-  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    BINARY_NAME="aspiral-mcp-linux-arm64"
-  else
+  if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
     BINARY_NAME="aspiral-mcp-linux-x64"
+  else
+    echo "Error: Arquitectura Linux ($ARCH) no soportada; solo x86_64/amd64 cuenta con binario oficial." >&2
+    exit 1
   fi
 else
   echo "Error: Esta plataforma ($OS-$ARCH) no cuenta con binario precompilado actualmente." >&2
@@ -37,7 +38,22 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "--> Descargando manifiesto de release..."
 curl -fsSL "$BASE_URL/manifest.json" -o "$TMP_DIR/manifest.json"
 
-EXPECTED_SHA=$(grep -A 3 "$BINARY_NAME" "$TMP_DIR/manifest.json" | grep sha256 | head -n 1 | awk -F'"' '{print $4}')
+EXPECTED_SHA=""
+if command -v jq &>/dev/null; then
+  EXPECTED_SHA=$(jq -r --arg f "$BINARY_NAME" '.artifacts[] | select(.file == $f) | .sha256 // empty' "$TMP_DIR/manifest.json" | head -n 1)
+elif command -v python3 &>/dev/null; then
+  EXPECTED_SHA=$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(next((a.get("sha256","") for a in m.get("artifacts",[]) if a.get("file")==sys.argv[2]), ""))' "$TMP_DIR/manifest.json" "$BINARY_NAME")
+elif command -v node &>/dev/null; then
+  EXPECTED_SHA=$(node -e 'const fs=require("fs"); const m=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const a=(m.artifacts||[]).find(x=>x.file===process.argv[2]); console.log(a?.sha256||"");' "$TMP_DIR/manifest.json" "$BINARY_NAME")
+else
+  EXPECTED_SHA=$(grep -A 3 "\"$BINARY_NAME\"" "$TMP_DIR/manifest.json" | grep sha256 | head -n 1 | awk -F'"' '{print $4}' || true)
+fi
+
+if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]]; then
+  echo "Error: No se encontró un hash SHA-256 válido para $BINARY_NAME en manifest.json." >&2
+  exit 1
+fi
+EXPECTED_SHA="$(printf '%s' "$EXPECTED_SHA" | tr '[:upper:]' '[:lower:]')"
 
 echo "--> Descargando $BINARY_NAME..."
 curl -fsSL "$BASE_URL/$BINARY_NAME" -o "$TMP_DIR/$BINARY_NAME"
@@ -66,5 +82,7 @@ echo ""
 echo "✓ Aspiral MCP instalado correctamente en: $INSTALL_DIR/aspiral-mcp"
 echo "✓ Configura en tu cliente MCP (Claude Desktop, Cursor, etc.):"
 echo "    command: $INSTALL_DIR/aspiral-mcp"
-echo "    env: ASPIRAL_API_KEY=<tu_clave_asmcp>"
+echo "    env:"
+echo "      ASPIRAL_MCP_API_KEY=<tu_clave_asmcp>"
+echo "      ASPIRAL_MCP_API_BASE_URL=https://monitoring.aspiral.com.mx"
 echo "================================================"
